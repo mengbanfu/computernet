@@ -1,0 +1,42 @@
+# CMake / Visual Studio 构建产物
+build/
+cmake-build-*/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# 编译输出
+*.exe
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.tlog
+*.lastbuildstate
+*.recipe
+*.idb
+*.ipdb
+*.iobj
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
