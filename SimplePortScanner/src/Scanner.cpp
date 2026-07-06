@@ -1,7 +1,13 @@
 #include "Scanner.h"
+#include "BannerGrabber.h"
+#include "ServiceMap.h"
 
 #include <chrono>
 #include <iostream>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -35,8 +41,13 @@ bool scanPort(const std::string& ip, int port) {
 void printPortScanResult(const ScanResult& result) {
     switch (result.status) {
         case PortStatus::Open:
-            std::cout << "[OPEN] ";
-            break;
+            std::cout << "[OPEN] " << result.ip << ":" << result.port << ' '
+                      << getServiceName(result.port);
+            if (!result.banner.empty()) {
+                std::cout << ' ' << result.banner;
+            }
+            std::cout << std::endl;
+            return;
         case PortStatus::Closed:
             std::cout << "[CLOSED] ";
             break;
@@ -164,36 +175,126 @@ ScanResult scanPortWithTimeout(const std::string& ip, int port, int timeoutMs) {
     auto endTime = std::chrono::steady_clock::now();
     result.timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
+    // 仅对开放端口尝试 Banner 获取（短超时，不影响 closed/timeout 判定）
+    if (result.status == PortStatus::Open) {
+        result.banner = grabBanner(sock, port, 1000);
+    }
+
     closesocket(sock);
     return result;
 }
 
 RangeScanSummary scanPorts(const std::string& ip, const std::vector<int>& ports, int timeoutMs) {
+    return scanTargets({ip}, ports, timeoutMs);
+}
+
+RangeScanSummary scanTargets(const std::vector<std::string>& ips,
+                             const std::vector<int>& ports,
+                             int timeoutMs) {
+    return scanTargetsConcurrent(ips, ports, timeoutMs, 1);
+}
+
+RangeScanSummary scanTargetsConcurrent(const std::vector<std::string>& ips,
+                                       const std::vector<int>& ports,
+                                       int timeoutMs,
+                                       int threadCount,
+                                       std::vector<ScanResult>* openResultsOut) {
     RangeScanSummary summary{};
-    summary.totalPorts = static_cast<int>(ports.size());
+    summary.hostCount = static_cast<int>(ips.size());
+    summary.portCount = static_cast<int>(ports.size());
+    summary.totalTasks = summary.hostCount * summary.portCount;
 
-    auto startTime = std::chrono::steady_clock::now();
+    if (summary.totalTasks == 0) {
+        return summary;
+    }
 
-    for (int port : ports) {
-        ScanResult portResult = scanPortWithTimeout(ip, port, timeoutMs);
+    if (threadCount < 1) {
+        threadCount = 1;
+    }
+    if (threadCount > summary.totalTasks) {
+        threadCount = summary.totalTasks;
+    }
 
-        switch (portResult.status) {
-            case PortStatus::Open:
-                ++summary.openPorts;
-                printPortScanResult(portResult);
-                break;
-            case PortStatus::Closed:
-                ++summary.closedPorts;
-                break;
-            case PortStatus::Timeout:
-                ++summary.timeoutPorts;
-                printPortScanResult(portResult);
-                break;
+    // ----------------------------------------------------------------
+    // 1. 构建任务队列：每个 (IP, 端口) 组合对应一个 ScanTask
+    // ----------------------------------------------------------------
+    std::queue<ScanTask> taskQueue;
+    for (const std::string& ip : ips) {
+        for (int port : ports) {
+            taskQueue.push(ScanTask{ip, port});
         }
     }
 
-    auto endTime = std::chrono::steady_clock::now();
+    // 开放端口结果列表（扫描过程中由多线程写入，需 mutex 保护）
+    std::vector<ScanResult> openResults;
+    openResults.reserve(static_cast<size_t>(summary.totalTasks / 10 + 1));
+
+    std::mutex queueMutex;    // 保护任务队列
+    std::mutex resultMutex;   // 保护 openResults
+    std::mutex statsMutex;    // 保护 closed / timeout 计数
+
+    // 工作线程函数：不断从队列取任务并扫描
+    auto worker = [&]() {
+        while (true) {
+            ScanTask task;
+
+            // 取任务时必须加锁，避免多个线程同时 pop 同一任务
+            {
+                std::lock_guard<std::mutex> lock(queueMutex);
+                if (taskQueue.empty()) {
+                    break;
+                }
+                task = taskQueue.front();
+                taskQueue.pop();
+            }
+
+            ScanResult portResult = scanPortWithTimeout(task.ip, task.port, timeoutMs);
+
+            if (portResult.status == PortStatus::Open) {
+                {
+                    std::lock_guard<std::mutex> lock(resultMutex);
+                    openResults.push_back(portResult);
+                }
+                {
+                    std::lock_guard<std::mutex> lock(statsMutex);
+                    ++summary.openPorts;
+                }
+            } else if (portResult.status == PortStatus::Closed) {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                ++summary.closedPorts;
+            } else {
+                std::lock_guard<std::mutex> lock(statsMutex);
+                ++summary.timeoutPorts;
+            }
+        }
+    };
+
+    const auto startTime = std::chrono::steady_clock::now();
+
+    // ----------------------------------------------------------------
+    // 2. 启动多个工作线程并发扫描
+    // ----------------------------------------------------------------
+    std::vector<std::thread> workers;
+    workers.reserve(static_cast<size_t>(threadCount));
+    for (int i = 0; i < threadCount; ++i) {
+        workers.emplace_back(worker);
+    }
+
+    for (std::thread& t : workers) {
+        t.join();
+    }
+
+    const auto endTime = std::chrono::steady_clock::now();
     summary.elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
+
+    // 全部完成后统一打印开放端口，避免多线程同时写 cout 导致输出混乱
+    for (const ScanResult& result : openResults) {
+        printPortScanResult(result);
+    }
+
+    if (openResultsOut != nullptr) {
+        *openResultsOut = std::move(openResults);
+    }
 
     return summary;
 }
