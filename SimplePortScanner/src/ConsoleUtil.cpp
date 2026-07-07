@@ -1,17 +1,25 @@
 #include "ConsoleUtil.h"
 
 #include <chrono>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 
+#ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
+#endif
 
 void setupConsoleUtf8() {
+#ifdef _WIN32
     SetConsoleOutputCP(65001);
     SetConsoleCP(65001);
+#endif
 }
 
 void clearInputStream() {
@@ -100,7 +108,11 @@ std::string currentDateTimeString() {
     const std::time_t timeValue = std::chrono::system_clock::to_time_t(now);
 
     std::tm localTime{};
+#ifdef _WIN32
     localtime_s(&localTime, &timeValue);
+#else
+    localtime_r(&timeValue, &localTime);
+#endif
 
     std::ostringstream output;
     output << std::put_time(&localTime, "%Y-%m-%d %H:%M:%S");
