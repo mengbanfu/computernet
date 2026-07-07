@@ -10,6 +10,7 @@ add_executable(SimplePortScanner
     src/main.cpp
     src/CliApp.cpp
     src/ConsoleUtil.cpp
+    src/NetCompat.cpp
     src/Scanner.cpp
     src/PortParser.cpp
     src/IpParser.cpp
