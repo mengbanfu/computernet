@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SimplePortScanner Web</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Local TCP Connect Scanner</p>
+        <h1>SimplePortScanner</h1>
+      </div>
+      <span class="mode-badge">127.0.0.1:8080</span>
+    </header>
+
+    <section class="notice">
+      请仅扫描本机、实验环境、虚拟机或已授权的目标。
+    </section>
+
+    <div class="workspace">
+      <section class="panel input-panel" aria-labelledby="scan-form-title">
+        <div class="section-heading">
+          <h2 id="scan-form-title">扫描参数</h2>
+          <button class="text-button" id="clearButton" type="button">清空结果</button>
+        </div>
+
+        <form id="scanForm" class="scan-form">
+          <label>
+            <span>目标 IP 或 IP 范围</span>
+            <input id="ipExpression" name="ipExpression" type="text" value="127.0.0.1"
+                   placeholder="如 192.168.1.10 或 192.168.1.1-192.168.1.20">
+          </label>
+
+          <label>
+            <span>端口表达式</span>
+            <input id="portExpression" name="portExpression" type="text" value="80,443,8080"
+                   placeholder="如 80 / 1-1024 / 21,22,80,443">
+          </label>
+
+          <div class="quick-ports" aria-label="快捷端口">
+            <button type="button" data-ports="80,443,8080,8443">Web</button>
+            <button type="button" data-ports="22,3389,5900">Remote</button>
+            <button type="button" data-ports="3306,5432,6379,27017">Database</button>
+            <button type="button" data-ports="21,22,23,25,53,80,110,143,443,445,3306,3389,5432,6379,8080">Common</button>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              <span>超时时间 ms</span>
+              <input id="timeoutMs" name="timeoutMs" type="number" min="1" value="500">
+            </label>
+
+            <label>
+              <span>线程数</span>
+              <input id="threadCount" name="threadCount" type="number" min="1" value="10">
+            </label>
+          </div>
+
+          <button id="scanButton" class="primary-button" type="submit">开始扫描</button>
+        </form>
+      </section>
+
+      <section class="panel result-panel" aria-labelledby="scan-result-title">
+        <div class="section-heading">
+          <h2 id="scan-result-title">扫描结果</h2>
+          <span id="statusBadge" class="status-badge idle">待扫描</span>
+        </div>
+
+        <div id="messageBox" class="message-box hidden"></div>
+
+        <div id="summaryCards" class="summary-grid hidden" aria-label="扫描摘要"></div>
+
+        <div id="resultList" class="result-list">
+          <div class="empty-state">
+            输入目标和端口后开始扫描，开放端口会显示在这里。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="info-grid">
+      <article class="info-block">
+        <h2>常见端口</h2>
+        <div id="serviceList" class="service-list">加载中...</div>
+      </article>
+
+      <article class="info-block">
+        <h2>使用说明</h2>
+        <ul class="help-list">
+          <li>IP 支持单个 IPv4 或同 C 段范围。</li>
+          <li>端口支持单个端口、范围和逗号组合。</li>
+          <li>页面只展示开放端口，关闭和超时端口进入摘要统计。</li>
+        </ul>
+      </article>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
