@@ -54,9 +54,15 @@ void writeTxt(const std::vector<ScanResult>& results, const std::string& filenam
 
     for (const ScanResult& result : openResults) {
         out << "[OPEN] " << result.ip << ':' << result.port << ' '
-            << getServiceName(result.port);
+            << getDisplayServiceName(result);
+        if (!result.serviceVersion.empty()) {
+            out << " (" << result.serviceVersion << ')';
+        }
         if (!result.banner.empty()) {
             out << ' ' << result.banner;
+        }
+        if (!result.detectionMethod.empty()) {
+            out << " [" << result.detectionMethod << ']';
         }
         out << " (耗时 " << result.timeMs << " ms)\n";
     }
@@ -73,13 +79,16 @@ void writeCsv(const std::vector<ScanResult>& results, const std::string& filenam
         throw std::runtime_error("无法写入 CSV 文件: " + filename);
     }
 
-    out << "IP,Port,Status,Service,Banner,TimeMs\n";
+    out << "IP,Port,Status,PortGuess,DetectedService,Version,Method,Banner,TimeMs\n";
 
     for (const ScanResult& result : openResults) {
         out << result.ip << ','
             << result.port << ','
             << statusToString(result.status) << ','
             << getServiceName(result.port) << ','
+            << getDisplayServiceName(result) << ','
+            << result.serviceVersion << ','
+            << result.detectionMethod << ','
             << result.banner << ','
             << result.timeMs << '\n';
     }

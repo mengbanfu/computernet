@@ -17,6 +17,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#include <windows.h>
 #include <ws2tcpip.h>
 #else
 #include <arpa/inet.h>
@@ -56,10 +57,26 @@ std::string trim(const std::string& text) {
     return text.substr(start, end - start + 1);
 }
 
+std::ifstream openTextFileStream(const std::string& path) {
+#ifdef _WIN32
+    // Windows 下窄字符 ifstream 无法可靠打开含中文等非 ASCII 路径，需转为 UTF-16
+    const int wideLength = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
+    if (wideLength <= 0) {
+        return {};
+    }
+
+    std::wstring widePath(static_cast<size_t>(wideLength), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), wideLength);
+    return std::ifstream(widePath, std::ios::binary);
+#else
+    return std::ifstream(path, std::ios::binary);
+#endif
+}
+
 std::string readTextFile(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file = openTextFileStream(path);
     if (!file) {
-        throw std::runtime_error("file not found");
+        throw std::runtime_error("file not found: " + path);
     }
 
     std::ostringstream buffer;
@@ -360,7 +377,11 @@ std::string scanJson(const ScanRequest& request) {
         }
         json << "{\"ip\":\"" << jsonEscape(result.ip) << "\"";
         json << ",\"port\":" << result.port;
-        json << ",\"service\":\"" << jsonEscape(getServiceName(result.port)) << "\"";
+        json << ",\"service\":\"" << jsonEscape(getDisplayServiceName(result)) << "\"";
+        json << ",\"portGuess\":\"" << jsonEscape(getServiceName(result.port)) << "\"";
+        json << ",\"detectedService\":\"" << jsonEscape(result.detectedService) << "\"";
+        json << ",\"version\":\"" << jsonEscape(result.serviceVersion) << "\"";
+        json << ",\"method\":\"" << jsonEscape(result.detectionMethod) << "\"";
         json << ",\"timeMs\":" << result.timeMs;
         json << ",\"banner\":\"" << jsonEscape(result.banner) << "\"}";
     }

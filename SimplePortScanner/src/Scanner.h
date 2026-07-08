@@ -10,14 +10,28 @@ enum class PortStatus {
     Timeout   // 超时内无明确响应：可能被过滤或网络丢弃（filtered）
 };
 
+// 协议探测识别结果
+struct ServiceDetection {
+    std::string name;      // 如 "SSH", "HTTP", "HTTPS", "Redis"
+    std::string version;   // 如 "OpenSSH_8.9"（能从 Banner 解析则填）
+    std::string banner;    // 原始/截断后的探测响应
+    std::string method;    // "probe" / "banner" / "port-guess"
+};
+
 // 单个端口的扫描结果
 struct ScanResult {
     std::string ip;
     int port = 0;
     PortStatus status = PortStatus::Closed;
     long long timeMs = 0;       // 本次扫描耗时（毫秒）
-    std::string banner;         // 开放端口尝试获取的 Banner（可能为空）
+    std::string banner;         // 探测响应摘要（兼容旧输出）
+    std::string detectedService; // 协议探测识别的服务名
+    std::string serviceVersion;  // 识别到的版本信息
+    std::string detectionMethod; // probe / banner / port-guess
 };
+
+// 优先返回探测结果，否则回退到端口表猜测
+std::string getDisplayServiceName(const ScanResult& result);
 
 // 扫描任务：一个 IP + 一个端口
 struct ScanTask {

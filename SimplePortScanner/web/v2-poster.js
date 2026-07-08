@@ -264,6 +264,12 @@ function summaryItem(label, value) {
 
 function renderResultSticker(result) {
   const endpoint = `${result.ip}:${result.port}`;
+  const service = result.detectedService || result.service || "Unknown";
+  const version = result.version ? ` (${escapeHtml(result.version)})` : "";
+  const method = result.method ? ` [${escapeHtml(result.method)}]` : "";
+  const portGuess = result.portGuess && result.portGuess !== service
+    ? `<div class="meta">端口猜测：${escapeHtml(result.portGuess)}</div>`
+    : "";
   const banner = result.banner
     ? `<div class="banner">Banner: ${escapeHtml(result.banner)}</div>`
     : "";
@@ -271,7 +277,8 @@ function renderResultSticker(result) {
   return `
     <article class="result-sticker">
       <h3 class="endpoint">${escapeHtml(endpoint)}</h3>
-      <div class="meta">${escapeHtml(result.service || "Unknown")} / ${result.timeMs} ms</div>
+      <div class="meta">${escapeHtml(service)}${version}${method} / ${result.timeMs} ms</div>
+      ${portGuess}
       ${banner}
     </article>
   `;

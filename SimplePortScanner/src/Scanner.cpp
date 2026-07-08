@@ -1,5 +1,5 @@
 #include "Scanner.h"
-#include "BannerGrabber.h"
+#include "ServiceDetector.h"
 #include "NetCompat.h"
 #include "ServiceMap.h"
 
@@ -23,9 +23,15 @@ void printPortScanResult(const ScanResult& result) {
     switch (result.status) {
         case PortStatus::Open:
             std::cout << "[OPEN] " << result.ip << ":" << result.port << ' '
-                      << getServiceName(result.port);
+                      << getDisplayServiceName(result);
+            if (!result.serviceVersion.empty()) {
+                std::cout << " (" << result.serviceVersion << ')';
+            }
             if (!result.banner.empty()) {
                 std::cout << ' ' << result.banner;
+            }
+            if (!result.detectionMethod.empty()) {
+                std::cout << " [" << result.detectionMethod << ']';
             }
             std::cout << std::endl;
             return;
@@ -112,9 +118,13 @@ ScanResult scanPortWithTimeout(const std::string& ip, int port, int timeoutMs) {
 
     finish();
 
-    // 仅对开放端口尝试 Banner 获取（短超时，不影响 closed/timeout 判定）
+    // 仅对开放端口尝试协议探测（短超时，不影响 closed/timeout 判定）
     if (result.status == PortStatus::Open) {
-        result.banner = grabBanner(sock.get(), port, 1000);
+        const ServiceDetection detection = detectService(sock.get(), port, 1000);
+        result.detectedService = detection.name;
+        result.serviceVersion = detection.version;
+        result.detectionMethod = detection.method;
+        result.banner = detection.banner;
     }
 
     return result;

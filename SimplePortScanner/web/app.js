@@ -102,6 +102,12 @@ function renderResults(results) {
 
   resultList.innerHTML = results.map((result) => {
     const endpoint = `${result.ip}:${result.port}`;
+    const service = result.detectedService || result.service || "Unknown";
+    const version = result.version ? ` (${escapeHtml(result.version)})` : "";
+    const method = result.method ? ` [${escapeHtml(result.method)}]` : "";
+    const portGuess = result.portGuess && result.portGuess !== service
+      ? `<div class="result-meta">端口猜测：${escapeHtml(result.portGuess)}</div>`
+      : "";
     const banner = result.banner
       ? `<div class="banner">Banner: ${escapeHtml(result.banner)}</div>`
       : "";
@@ -111,9 +117,10 @@ function renderResults(results) {
         <div class="result-main">
           <span class="open-pill">OPEN</span>
           <span class="endpoint">${escapeHtml(endpoint)}</span>
-          <span class="service-name">${escapeHtml(result.service || "Unknown")}</span>
+          <span class="service-name">${escapeHtml(service)}${version}${method}</span>
         </div>
         <div class="result-meta">耗时 ${result.timeMs} ms</div>
+        ${portGuess}
         ${banner}
       </article>
     `;

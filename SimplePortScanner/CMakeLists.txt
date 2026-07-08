@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(SimplePortScanner VERSION 2.0.0 LANGUAGES CXX)
+project(SimplePortScanner VERSION 3.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_executable(SimplePortScanner
     src/ServiceMap.cpp
     src/ResultWriter.cpp
     src/BannerGrabber.cpp
+    src/ServiceDetector.cpp
 )
 
 target_compile_definitions(SimplePortScanner PRIVATE
