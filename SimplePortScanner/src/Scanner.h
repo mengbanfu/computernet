@@ -55,7 +55,8 @@ RangeScanSummary scanTargetsConcurrent(const std::vector<std::string>& ips,
                                        const std::vector<int>& ports,
                                        int timeoutMs,
                                        int threadCount,
-                                       std::vector<ScanResult>* openResultsOut = nullptr);
+                                       std::vector<ScanResult>* openResultsOut = nullptr,
+                                       bool printOpenResults = true);
 
 // 将单端口扫描结果按约定格式输出
 void printPortScanResult(const ScanResult& result);

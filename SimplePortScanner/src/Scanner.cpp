@@ -134,7 +134,8 @@ RangeScanSummary scanTargetsConcurrent(const std::vector<std::string>& ips,
                                        const std::vector<int>& ports,
                                        int timeoutMs,
                                        int threadCount,
-                                       std::vector<ScanResult>* openResultsOut) {
+                                       std::vector<ScanResult>* openResultsOut,
+                                       bool printOpenResults) {
     RangeScanSummary summary{};
     summary.hostCount = static_cast<int>(ips.size());
     summary.portCount = static_cast<int>(ports.size());
@@ -224,8 +225,10 @@ RangeScanSummary scanTargetsConcurrent(const std::vector<std::string>& ips,
     summary.elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
 
     // 全部完成后统一打印开放端口，避免多线程同时写 cout 导致输出混乱
-    for (const ScanResult& result : openResults) {
-        printPortScanResult(result);
+    if (printOpenResults) {
+        for (const ScanResult& result : openResults) {
+            printPortScanResult(result);
+        }
     }
 
     if (openResultsOut != nullptr) {
