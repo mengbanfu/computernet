@@ -11,12 +11,17 @@ add_executable(SimplePortScanner
     src/CliApp.cpp
     src/ConsoleUtil.cpp
     src/NetCompat.cpp
+    src/WebApp.cpp
     src/Scanner.cpp
     src/PortParser.cpp
     src/IpParser.cpp
     src/ServiceMap.cpp
     src/ResultWriter.cpp
     src/BannerGrabber.cpp
+)
+
+target_compile_definitions(SimplePortScanner PRIVATE
+    SIMPLE_PORT_SCANNER_WEB_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/web"
 )
 
 # Winsock2 库，TCP Connect 扫描所需
