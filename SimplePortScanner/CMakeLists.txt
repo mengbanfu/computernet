@@ -19,6 +19,8 @@ add_executable(SimplePortScanner
     src/ResultWriter.cpp
     src/BannerGrabber.cpp
     src/ServiceDetector.cpp
+    src/LocalNetwork.cpp
+    src/HostDiscovery.cpp
 )
 
 target_compile_definitions(SimplePortScanner PRIVATE
@@ -27,7 +29,7 @@ target_compile_definitions(SimplePortScanner PRIVATE
 
 # Winsock2 库，TCP Connect 扫描所需
 if(WIN32)
-    target_link_libraries(SimplePortScanner PRIVATE ws2_32)
+    target_link_libraries(SimplePortScanner PRIVATE ws2_32 iphlpapi)
 endif()
 
 find_package(Threads REQUIRED)

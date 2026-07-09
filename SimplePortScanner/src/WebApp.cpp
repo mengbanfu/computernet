@@ -1,6 +1,8 @@
 #include "WebApp.h"
 
+#include "HostDiscovery.h"
 #include "IpParser.h"
+#include "LocalNetwork.h"
 #include "NetCompat.h"
 #include "PortParser.h"
 #include "Scanner.h"
@@ -42,6 +44,12 @@ struct ScanRequest {
     std::string portExpression;
     int timeoutMs = 500;
     int threadCount = 10;
+};
+
+struct DiscoverRequest {
+    std::string scanRange;
+    int timeoutMs = 500;
+    int threadCount = 20;
 };
 
 std::string webRoot() {
@@ -320,6 +328,23 @@ bool parseScanRequest(const std::string& body, ScanRequest& request, std::string
     return true;
 }
 
+bool parseDiscoverRequest(const std::string& body, DiscoverRequest& request, std::string& error) {
+    if (!extractJsonString(body, "scanRange", request.scanRange)
+        || trim(request.scanRange).empty()) {
+        error = "Scan range is required.";
+        return false;
+    }
+    if (!extractJsonInt(body, "timeoutMs", request.timeoutMs) || request.timeoutMs < 1) {
+        error = "Timeout must be a positive integer.";
+        return false;
+    }
+    if (!extractJsonInt(body, "threadCount", request.threadCount) || request.threadCount < 1) {
+        error = "Thread count must be a positive integer.";
+        return false;
+    }
+    return true;
+}
+
 std::string servicesJson() {
     std::ostringstream json;
     json << "{\"services\":[";
@@ -390,6 +415,61 @@ std::string scanJson(const ScanRequest& request) {
     return json.str();
 }
 
+std::string subnetsJson() {
+    std::ostringstream json;
+    json << "{\"subnets\":[";
+
+    const std::vector<LocalSubnet> subnets = getLocalSubnets();
+    for (size_t i = 0; i < subnets.size(); ++i) {
+        const LocalSubnet& subnet = subnets[i];
+        if (i > 0) {
+            json << ',';
+        }
+        json << "{\"adapterName\":\"" << jsonEscape(subnet.adapterName) << "\"";
+        json << ",\"localIp\":\"" << jsonEscape(subnet.localIp) << "\"";
+        json << ",\"subnetMask\":\"" << jsonEscape(subnet.subnetMask) << "\"";
+        json << ",\"cidr\":\"" << jsonEscape(subnet.cidr) << "\"";
+        json << ",\"scanRange\":\"" << jsonEscape(subnet.scanRange) << "\"}";
+    }
+
+    json << "]}";
+    return json.str();
+}
+
+std::string discoverJson(const DiscoverRequest& request) {
+    std::string parseError;
+    const std::vector<std::string> ips = parseIPs(request.scanRange, parseError);
+    if (ips.empty()) {
+        return jsonError("Invalid scan range: " + parseError);
+    }
+
+    const HostDiscoverySummary summary = discoverHosts(
+        ips,
+        request.timeoutMs,
+        request.threadCount);
+
+    std::ostringstream json;
+    json << "{\"ok\":true";
+    json << ",\"summary\":{";
+    json << "\"totalHosts\":" << summary.totalHosts;
+    json << ",\"aliveHosts\":" << summary.aliveHosts;
+    json << ",\"elapsedSeconds\":" << summary.elapsedSeconds;
+    json << "},\"aliveHosts\":[";
+
+    for (size_t i = 0; i < summary.results.size(); ++i) {
+        const HostProbeResult& result = summary.results[i];
+        if (i > 0) {
+            json << ',';
+        }
+        json << "{\"ip\":\"" << jsonEscape(result.ip) << "\"";
+        json << ",\"respondedPort\":" << result.respondedPort;
+        json << ",\"timeMs\":" << result.timeMs << "}";
+    }
+
+    json << "]}";
+    return json.str();
+}
+
 std::string staticContentType(const std::string& path) {
     if (path == "/styles.css") {
         return "text/css; charset=utf-8";
@@ -411,6 +491,20 @@ std::string handleRequest(const HttpRequest& request) {
         }
         if (request.method == "GET" && request.path == "/api/services") {
             return buildResponse(200, "application/json; charset=utf-8", servicesJson());
+        }
+        if (request.method == "GET" && request.path == "/api/subnets") {
+            return buildResponse(200, "application/json; charset=utf-8", subnetsJson());
+        }
+        if (request.method == "POST" && request.path == "/api/discover") {
+            DiscoverRequest discoverRequest;
+            std::string error;
+            if (!parseDiscoverRequest(request.body, discoverRequest, error)) {
+                return buildResponse(400, "application/json; charset=utf-8", jsonError(error));
+            }
+
+            const std::string body = discoverJson(discoverRequest);
+            const int status = body.find("\"ok\":false") == std::string::npos ? 200 : 400;
+            return buildResponse(status, "application/json; charset=utf-8", body);
         }
         if (request.method == "POST" && request.path == "/api/scan") {
             ScanRequest scanRequest;

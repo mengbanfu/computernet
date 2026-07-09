@@ -129,6 +129,30 @@ bool parseIpRange(const std::string& input, std::vector<std::string>& ips, std::
     return true;
 }
 
+bool parseIpList(const std::string& input, std::vector<std::string>& ips, std::string& errorMessage) {
+    std::stringstream stream(input);
+    std::string token;
+    bool hasToken = false;
+
+    while (std::getline(stream, token, ',')) {
+        token = trim(token);
+        if (token.empty()) {
+            continue;
+        }
+        hasToken = true;
+        if (!parseSingleIp(token, ips, errorMessage)) {
+            return false;
+        }
+    }
+
+    if (!hasToken) {
+        errorMessage = "IP 列表不能为空";
+        return false;
+    }
+
+    return true;
+}
+
 }  // namespace
 
 std::vector<std::string> parseIPs(const std::string& input, std::string& errorMessage) {
@@ -142,11 +166,18 @@ std::vector<std::string> parseIPs(const std::string& input, std::string& errorMe
 
     std::vector<std::string> ips;
 
-    const bool isRange = normalizedInput.find('-') != std::string::npos;
-    const bool ok = isRange ? parseIpRange(normalizedInput, ips, errorMessage)
-                            : parseSingleIp(normalizedInput, ips, errorMessage);
-    if (!ok) {
-        return {};
+    if (normalizedInput.find(',') != std::string::npos) {
+        const bool ok = parseIpList(normalizedInput, ips, errorMessage);
+        if (!ok) {
+            return {};
+        }
+    } else {
+        const bool isRange = normalizedInput.find('-') != std::string::npos;
+        const bool ok = isRange ? parseIpRange(normalizedInput, ips, errorMessage)
+                                : parseSingleIp(normalizedInput, ips, errorMessage);
+        if (!ok) {
+            return {};
+        }
     }
 
     if (ips.empty()) {

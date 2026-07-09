@@ -1,7 +1,9 @@
 #include "CliApp.h"
 
 #include "ConsoleUtil.h"
+#include "HostDiscovery.h"
 #include "IpParser.h"
+#include "LocalNetwork.h"
 #include "PortParser.h"
 #include "ResultWriter.h"
 #include "Scanner.h"
@@ -67,6 +69,7 @@ void printMenu() {
     std::cout << "1. 开始扫描" << std::endl;
     std::cout << "2. 查看常见端口列表" << std::endl;
     std::cout << "3. 查看使用说明" << std::endl;
+    std::cout << "4. 子网主机发现" << std::endl;
     std::cout << "0. 退出" << std::endl;
 }
 
@@ -92,6 +95,7 @@ void showHelp() {
     std::cout << "2. IP 表达式示例" << std::endl;
     std::cout << "   - 单个 IP：192.168.1.10" << std::endl;
     std::cout << "   - IP 范围：192.168.1.1-192.168.1.20（同一 C 段）" << std::endl;
+    std::cout << "   - 多个 IP：192.168.1.1,192.168.1.10,192.168.1.20" << std::endl;
     std::cout << std::endl;
     std::cout << "3. 端口表达式示例" << std::endl;
     std::cout << "   - 单端口：80" << std::endl;
@@ -111,6 +115,11 @@ void showHelp() {
     std::cout << "6. 安全提示" << std::endl;
     std::cout << "   - 仅扫描本机、虚拟机或已授权的主机" << std::endl;
     std::cout << "   - 请勿对未授权目标进行扫描" << std::endl;
+    std::cout << std::endl;
+    std::cout << "7. 子网主机发现" << std::endl;
+    std::cout << "   - 自动识别本机 /24 子网" << std::endl;
+    std::cout << "   - 用 TCP Connect 探测存活主机（80/443/135/445/22）" << std::endl;
+    std::cout << "   - 可将存活 IP 带入端口扫描" << std::endl;
 }
 
 std::vector<std::string> readIpExpression() {
@@ -145,10 +154,15 @@ std::vector<int> readPortExpression() {
     }
 }
 
-ScanConfig collectScanConfig() {
+ScanConfig collectScanConfig(const std::vector<std::string>* presetIps) {
     ScanConfig config{};
 
-    config.ips = readIpExpression();
+    if (presetIps != nullptr && !presetIps->empty()) {
+        config.ips = *presetIps;
+        printParsedList("使用存活 IP 列表：", config.ips);
+    } else {
+        config.ips = readIpExpression();
+    }
     config.ports = readPortExpression();
 
     config.timeoutMs = readIntInRange(
@@ -187,8 +201,8 @@ void printScanSummary(const RangeScanSummary& summary,
     std::cout << "总耗时：" << summary.elapsedSeconds << " 秒" << std::endl;
 }
 
-void runScan() {
-    const ScanConfig config = collectScanConfig();
+void runScan(const std::vector<std::string>* presetIps) {
+    const ScanConfig config = collectScanConfig(presetIps);
     const int totalTasks = static_cast<int>(config.ips.size() * config.ports.size());
 
     std::cout << std::endl;
@@ -222,17 +236,110 @@ void runScan() {
     }
 }
 
+LocalSubnet chooseLocalSubnet() {
+    const std::vector<LocalSubnet> subnets = getLocalSubnets();
+    if (subnets.empty()) {
+        std::cout << "未找到可用的 /24 子网网卡。请确认网卡已连接且掩码为 255.255.255.0。" << std::endl;
+        return {};
+    }
+
+    std::cout << std::endl;
+    std::cout << "检测到以下本机子网：" << std::endl;
+    std::cout << "------------------------------------" << std::endl;
+    for (size_t i = 0; i < subnets.size(); ++i) {
+        const LocalSubnet& subnet = subnets[i];
+        std::cout << (i + 1) << ". " << subnet.adapterName
+                  << " | 本机 IP: " << subnet.localIp
+                  << " | 子网: " << subnet.cidr
+                  << " | 扫描范围: " << subnet.scanRange << std::endl;
+    }
+
+    if (subnets.size() == 1) {
+        std::cout << std::endl << "自动选择唯一可用子网。" << std::endl;
+        return subnets.front();
+    }
+
+    const int choice = readIntInRange("请选择要探测的子网编号: ", 1, static_cast<int>(subnets.size()));
+    return subnets[static_cast<size_t>(choice - 1)];
+}
+
+void printDiscoverySummary(const HostDiscoverySummary& summary) {
+    std::cout << std::endl;
+    std::cout << "探测完成：" << std::endl;
+    std::cout << "存活主机：" << summary.aliveHosts << " / " << summary.totalHosts << std::endl;
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "总耗时：" << summary.elapsedSeconds << " 秒" << std::endl;
+}
+
+void runSubnetDiscovery() {
+    const LocalSubnet subnet = chooseLocalSubnet();
+    if (subnet.scanRange.empty()) {
+        return;
+    }
+
+    std::string parseError;
+    const std::vector<std::string> ips = parseIPs(subnet.scanRange, parseError);
+    if (ips.empty()) {
+        std::cout << "IP 范围解析失败: " << parseError << std::endl;
+        return;
+    }
+
+    std::cout << std::endl;
+    std::cout << "即将探测子网 " << subnet.cidr
+              << "，共 " << ips.size() << " 个 IP" << std::endl;
+    std::cout << "探测端口：80, 443, 135, 445, 22（任一响应即判定存活）" << std::endl;
+
+    const int timeoutMs = readIntInRange(
+        "请输入超时时间（毫秒，如 300 或 500）: ", 1, 600000);
+    const int threadCount = readIntInRange(
+        "请输入线程数（如 20 / 50 / 100）: ", 1, 1000);
+
+    std::cout << std::endl;
+    std::cout << "子网探测进行中，请稍候..." << std::endl;
+
+    const HostDiscoverySummary summary = discoverHosts(ips, timeoutMs, threadCount);
+
+    if (summary.results.empty()) {
+        std::cout << std::endl << "未发现存活主机。" << std::endl;
+    } else {
+        std::cout << std::endl;
+        for (const HostProbeResult& result : summary.results) {
+            std::cout << "[ALIVE] " << result.ip
+                      << " (响应端口 " << result.respondedPort << ") "
+                      << result.timeMs << " ms" << std::endl;
+        }
+    }
+
+    printDiscoverySummary(summary);
+
+    if (summary.aliveHosts == 0) {
+        return;
+    }
+
+    if (!readYesNo("是否使用存活 IP 继续端口扫描？(y/n): ")) {
+        return;
+    }
+
+    std::vector<std::string> aliveIps;
+    aliveIps.reserve(summary.results.size());
+    for (const HostProbeResult& result : summary.results) {
+        aliveIps.push_back(result.ip);
+    }
+
+    runScan(&aliveIps);
+}
+
 }  // namespace
 
 void CliApp::run() {
     while (true) {
         printMenu();
 
-        const int choice = readIntInRange("请选择: ", 0, 3);
+        const int choice = readIntInRange("请选择: ", 0, 4);
 
         switch (choice) {
             case 1:
-                runScan();
+                runScan(nullptr);
                 pauseForEnter();
                 break;
             case 2:
@@ -241,6 +348,10 @@ void CliApp::run() {
                 break;
             case 3:
                 showHelp();
+                pauseForEnter();
+                break;
+            case 4:
+                runSubnetDiscovery();
                 pauseForEnter();
                 break;
             case 0:
